@@ -1,0 +1,393 @@
+#include <iostream>
+#include <fstream>
+#include <vector>
+#include <algorithm>
+#include <complex>
+#include <cassert>
+#include <cmath>
+#include <list>
+
+using namespace std;
+
+typedef complex<double> Point;
+typedef vector<int> Permutation;
+
+#define x(a) (real(a))
+#define y(a) (imag(a))
+#define MAXNUMOFBF 8
+#define MAXNUMOFDP 16
+#define INF (1 << 30)
+
+typedef struct {
+	vector<vector<double> > cost;
+	vector<vector<int> > last;
+} DP;
+
+typedef struct {
+	Point pos;
+	int id;
+
+} Town;
+
+namespace std {
+	bool operator < (const Town &a, const Town &b) {
+		return x(a.pos) < x(b.pos);
+	}
+}
+
+void read_input(string fileName, vector<Point> &towns) {
+	ifstream ifs;
+
+	ifs.open(fileName);
+	if (!ifs) {
+		cerr << "can't open file : " << fileName << endl;
+		exit(1);
+	}
+
+	//一行読み捨てる
+	string buf;
+	getline(ifs, buf);
+
+	double x, y;
+	while (getline(ifs, buf)) {
+		string token;
+
+		istringstream stream(buf);
+
+		getline(stream, token, ',');
+		x = stod(token);
+		getline(stream, token, ',');
+		y = stod(token);
+
+		assert(stream.eof());
+
+		towns.push_back(Point(x,y));
+	}
+}
+
+void write_solution(string fileName, Permutation &answer) {
+	ofstream ofs;
+	ofs.open(fileName, ios::out);
+	if (!ofs) {
+		cerr << "can't open file : " << fileName << endl;
+		exit(1);
+	}
+
+	ofs << "index" << endl;
+	for (int i = 0; i < answer.size(); i++) {
+		ofs << answer[i] << endl;
+	}
+}
+
+double distance(Point p, Point q) {
+	return sqrt(pow(x(p) - x(q), 2) + pow(y(p) - y(q), 2));
+}
+
+void calc_d(vector<Point> &towns, vector<vector<double> > &d) {
+	int n = towns.size();
+	d.resize(n);
+	for (int i = 0; i < n; i++) {
+		d[i].resize(n);
+	}
+	for (int i = 0; i < n; i++) {
+		for (int j = 0; j < n; j++) {
+			d[i][j] = distance(towns[i], towns[j]);
+		}
+	}
+}
+
+void brute_force(int numOfTowns, vector<vector<double> > &d, Permutation &answer) {
+	assert(numOfTowns <= MAXNUMOFBF);
+	Permutation perm;
+	for (int i = 0; i < numOfTowns; i++) {
+		perm.push_back(i);
+	}
+
+	double min = INF;
+	Permutation minperm;
+
+	do {
+		double sum = 0;
+		int i;
+		for (i = 0; i < perm.size() - 1; i++) {
+			assert(i + 1 < numOfTowns);
+			assert(perm[i] < d.size());
+			assert(perm[i + 1] < d[perm[i]].size());
+
+			sum += d[perm[i]][perm[i+1]];
+		}
+		assert(perm[0] < d.size());
+		assert(perm[i] < d[perm[0]].size());
+
+		sum += d[perm[0]][perm[i]];
+
+		if (min > sum) {
+			min = sum;
+			minperm = perm;
+		}
+	} while (next_permutation(perm.begin(), perm.end()));
+
+	answer = minperm;
+}
+
+bool is_visited(int t, int state) {
+	return state&(1 << t);
+}
+
+bool is_visited_all(int n, int state) {
+	return (1<<n)-1 == state;
+}
+
+//RECursive function
+void rec_dp(int numOfTowns, int now, int state, vector<vector<double> > &d, DP &dp) {
+	if (is_visited_all(numOfTowns, state)) { return; }
+
+	for (int next = 0; next < numOfTowns; next++) {
+		if (is_visited(next, state)) { continue; }
+
+		int nextState = state|(1<<now);
+		if (dp.cost[next][nextState] > dp.cost[now][state] + d[now][next]) {
+			dp.cost[next][nextState] = dp.cost[now][state] + d[now][next];
+			dp.last[next][nextState] = now;
+			rec_dp(numOfTowns, next, nextState, d, dp);
+		}
+	}
+}
+
+void dp(int numOfTowns, vector<vector<double> > &d, Permutation &answer) {
+	assert(numOfTowns <= MAXNUMOFDP);
+	assert(numOfTowns == 16);
+	assert(answer.size() == 0);
+
+	DP dparr;
+
+	dparr.cost.resize(numOfTowns);
+	dparr.last.resize(numOfTowns);
+
+	for (int i = 0; i < numOfTowns; i++) {
+		assert(i < dparr.cost.size());
+		assert(i < dparr.last.size());
+
+		dparr.cost[i].assign(1<<numOfTowns, INF);
+		dparr.last[i].resize(1<<numOfTowns);
+	}
+
+	dparr.cost[0][0] = 0;
+
+	int firstTown = 0;
+	int initState = 0;
+
+	rec_dp(numOfTowns, firstTown, initState, d, dparr);
+
+	assert(dparr.cost.size() == numOfTowns);
+	assert(dparr.last.size() == numOfTowns);
+
+	int bitset = (1 << numOfTowns) -1;
+	int min = 0;
+
+	assert(dparr.cost[min].size() == (1 << numOfTowns));
+	assert(bitset < (1 << numOfTowns));
+
+	for (int i = 0; i < numOfTowns; i++) {
+		if (dparr.cost[min][bitset] + d[min][0] > dparr.cost[i][bitset] + d[i][0]) {
+			min = i;
+		}
+	}
+
+	assert(min < numOfTowns);
+	answer.push_back(min);
+
+	for (int j = 0; j < numOfTowns - 1; j++) {
+		assert((1 << min) | bitset);
+		//^:xor i番目だけ反転
+		bitset = bitset^(1 << min);
+		assert(dparr.last[min].size() == (1 << numOfTowns));
+		assert(bitset < (1 << numOfTowns) -1);
+
+		min = dparr.last[min][bitset];
+		assert(min < numOfTowns);
+
+		answer.push_back(min);
+	}
+}
+
+//from Spagetti source
+double cross(const Point &a, const Point &b) {
+	return y(conj(a)*b);
+}
+
+//from Spagetti source
+double dot(const Point &a, const Point &b) {
+	return x(conj(a)*b);
+}
+
+//from Spagetti source "counter clock wise"
+int ccw(Point a, Point b, Point c) {
+	b -= a; c -= a;
+	if (cross(b, c) > 0)   return +1;       // counter clockwise
+	if (cross(b, c) < 0)   return -1;       // clockwise
+	if (dot(b, c) < 0)     return +2;       // c--a--b on line
+	if (norm(b) < norm(c)) return -2;       // a--b--c on line
+	return 0;
+}
+
+//from Spagetti source
+void convex_hull(vector<Point> &poss, list<int> &perm) {
+	int numOfTowns = poss.size();
+	int k = 0;
+
+	vector<Town> towns;
+
+	towns.resize(numOfTowns);
+	for (int i = 0; i < numOfTowns; i++) {
+		towns[i].pos = poss[i];
+		towns[i].id = i;
+	}
+
+	sort(towns.begin(), towns.end());
+
+	vector<Town> answer;
+	answer.resize(2*numOfTowns);
+
+	//lower-hull
+	for (int i = 0; i < numOfTowns; i++) {
+		while (k >= 2 && ccw(answer[k-2].pos, answer[k-1].pos, towns[i].pos) <= 0) { k--; }
+		answer[k] = towns[i];
+		k++;
+	}
+
+	//upper-hull
+	int t = k + 1;
+	for (int i = numOfTowns - 2; i >= 0; i--) {
+		while (k >= t && ccw(answer[k-2].pos, answer[k-1].pos, towns[i].pos) <= 0) { k--; }
+		answer[k] = towns[i];
+		k++;
+	}
+
+	for (int i = 0; i < k - 1; i++) {
+		perm.push_front(answer[i].id);
+	}
+}
+
+void min_cost(vector<vector<double> > &d, int index, list<int> &subPerm, double &ratio, list<int>::iterator &miniter) {
+	double minCost = INF;
+	int numOfTowns = d.size();
+	
+	assert(index < numOfTowns);
+
+	double cost;
+	list<int>::iterator last;
+	auto iter = subPerm.begin();
+	last = iter;
+	iter++;
+	for (; iter != subPerm.end();) {
+		assert(*last < numOfTowns);
+		assert(*iter < numOfTowns);
+		cost = d[index][*last] + d[index][*iter] - d[*last][*iter];
+		if (minCost > cost) {
+			miniter = iter;
+			minCost = cost;
+			ratio = (d[index][*last] + d[index][*iter]) / d[*last][*iter];
+		}
+		last = iter;
+		iter++;	
+	}
+	last = subPerm.back();
+	iter = subPerm.front();
+	assert(*last < numOfTowns);
+	assert(*iter < numOfTowns);
+	cost = d[index][*last] + d[index][*iter] - d[*last][*iter];
+	if (minCost > cost) {
+		miniter = iter;
+		minCost = cost;
+		ratio = (d[index][*last] + d[index][*iter]) / d[*last][*iter];
+	}
+
+	
+}
+
+void min_ratio_pair(int numOfTowns, vector<vector<double> > &d, list<int> &subPerm, int &addTown, list<int>::iterator &addPos) {
+	double minRatio = INF;
+	double ratio;
+	for (int i = 0; i < numOfTowns; i++) {
+		if (find(subPerm.begin(), subPerm.end(), i) != subPerm.end()) { continue; }
+		
+		list<int>::iterator index;
+		double ratio;		
+		min_cost(d, i, subPerm, ratio, index);
+		
+		if (minRatio > ratio) {
+			addTown = i;
+			addPos = index;
+			minRatio = ratio;
+		}
+	}
+}
+
+void loop_chi(int numOfTowns, vector<vector<double> > &d, list<int> &subPerm) {
+	int addTown;
+	list<int>::iterator addPos;
+
+	min_ratio_pair(numOfTowns, d, subPerm, addTown, addPos);
+	
+	subPerm.insert(addPos, addTown);
+}
+
+void chi(vector<Point> &towns, vector<vector<double> > &d, Permutation &answer) {
+
+	int numOfTowns = towns.size();
+	list<int> subPerm;
+	
+	convex_hull(towns, subPerm);
+
+	while (subPerm.size() != numOfTowns) {
+		loop_chi(numOfTowns, d, subPerm);
+	}
+
+	answer.resize(numOfTowns);
+	
+	int i = 0;
+	for (auto iter = subPerm.begin(); iter != subPerm.end(); iter++) {
+		answer[i] = *iter;
+		i++;
+	}
+
+	assert(i == numOfTowns);
+}
+
+int main() {
+	string inputFileName;
+	string outputFileName;
+
+	string problemNum;
+
+	//"d"istance function
+	vector<vector<double> > d;
+
+	cin >> problemNum;
+
+	assert(problemNum.size() == 1);
+	assert(isdigit(problemNum[0]));
+
+	inputFileName = "input_" + problemNum + ".csv";
+	outputFileName = "solution_yours_" + problemNum + ".csv";
+
+	vector<Point> towns;
+	read_input(inputFileName, towns);
+	calc_d(towns, d);
+
+	vector<int> answer;
+
+	//dp is faster but use BF just to practice implementation
+	if (towns.size() <= MAXNUMOFBF) {
+		brute_force(towns.size(), d, answer);
+	} else if (towns.size() <= MAXNUMOFDP) {
+		dp(towns.size(), d, answer);
+	} else {
+		chi(towns, d, answer);
+	}
+
+	write_solution(outputFileName, answer);
+
+	return 0;
+}
